@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // tt: the sidequest command line. /t calls this; it never writes SQL itself.
 // Exit codes: 0 ok, 1 bad input or error, 2 needs the user to choose (e.g. an ambiguous project).
+import { fileURLToPath } from 'node:url';
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import { sql } from '../core/db.ts';
 import {
@@ -25,6 +26,7 @@ import {
 } from '../core/time.ts';
 
 const SRC = 'cli' as const;
+const ROOT = fileURLToPath(new URL('../..', import.meta.url)).replace(/[\\/]$/, '');
 const argv = process.argv.slice(2);
 const json = argv.includes('--json');
 const args = argv.filter((a) => a !== '--json');
@@ -542,7 +544,7 @@ try {
   } else {
     const err = e as Error & { code?: string };
     console.error(err.code === 'ECONNREFUSED'
-      ? 'Can\'t reach Postgres. Is the postgresql-x64-17 service running?'
+      ? `Can't reach Postgres. Start it (Docker: docker compose up -d), then check with: npm run setup   (in ${ROOT})`
       : `Unexpected error: ${err.message}`);
     process.exitCode = 1;
   }

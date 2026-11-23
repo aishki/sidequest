@@ -16,7 +16,7 @@ const host = '127.0.0.1';
 const allowedHosts = new Set([`localhost:${port}`, `127.0.0.1:${port}`]);
 
 await applyTimezone().catch((e: Error & { code?: string }) => {
-  console.error(e.code === 'ECONNREFUSED' ? 'Can\'t reach Postgres. Is the postgresql-x64-17 service running?' : e.message);
+  console.error(e.code === 'ECONNREFUSED' ? 'Can\'t reach Postgres. Is it running? Check with: npm run setup' : e.message);
   process.exit(1);
 });
 

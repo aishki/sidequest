@@ -1,0 +1,26 @@
+# Postgres for sidequest, if you'd rather not install it.
+# `npm run setup docker` writes the password and port to .env and starts this for you.
+# Data lives in the named volume "sidequest_pgdata", so it survives restarts and updates.
+# It only listens on 127.0.0.1: nothing outside this computer can reach it.
+name: sidequest
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sidequest
+      POSTGRES_DB: sidequest
+      POSTGRES_PASSWORD: ${SIDEQUEST_DB_PASSWORD:?Run "npm run setup docker" first; it writes the password to .env}
+    ports:
+      - "127.0.0.1:${SIDEQUEST_DB_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sidequest -d sidequest"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  pgdata:

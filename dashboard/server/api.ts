@@ -47,7 +47,7 @@ export async function handleApi(req: IncomingMessage, res: ServerResponse, url: 
       const err = e as Error & { code?: string };
       console.error(err);
       return send(res, 500, {
-        error: err.code === 'ECONNREFUSED' ? 'Can\'t reach Postgres. Is the postgresql-x64-17 service running?' : 'Something went wrong on the server. Check the terminal running the dashboard.',
+        error: err.code === 'ECONNREFUSED' ? 'Can\'t reach Postgres. Is it running? Check with: npm run setup' : 'Something went wrong on the server. Check the terminal running the dashboard.',
       });
     }
   }
