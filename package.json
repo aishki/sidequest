@@ -1,6 +1,6 @@
 {
   "name": "sidequest",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Every ticket is a quest. A /t ticket tracker for Claude Code with a dark local dashboard and Postgres.",
   "scripts": {
     "db:generate": "drizzle-kit generate",
