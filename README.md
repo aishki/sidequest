@@ -50,18 +50,95 @@ You can also list your projects in `seed/projects.json` (copy `seed/projects.exa
 git pull && npm run setup install
 ```
 
-## Using it
+## Getting started
+
+The examples use two projects, **Website** (`WEB`, also called "site") and **Mobile app** (`APP`, also called "app"). Use your own names: `/t` understands each project's prefix, its full name and the nicknames you gave it.
+
+### 1. Tell sidequest which folder is which project
+
+Open Claude Code in a project's folder and say which project it is:
+
+```text
+/t this folder is the website           → tt link web
+```
+
+From then on, "this" in that folder means that project, so you don't have to name it. Do it once per folder. If you skip it, `/t` asks the first time you say "this".
+
+### 2. Add tickets as they come up
+
+Say it the way you'd write it on a sticky note. Claude works out the project, the type (bug, feature, UI/UX…) and the priority, and only asks when it can't tell.
 
 ```text
 /t site login needs a loading state, high, plan today
-/t spent 1h30 on web-001
-/t start working on app-004
-/t done web-001
-/t this: dark mode toggle flickers      ← "this" = the project linked to the current folder
-/t                                      ← what's on today
+/t this: dark mode toggle flickers
+/t app crash when uploading a photo, due friday
+/t look into push notifications for the app, someday
 ```
 
-When a project name is ambiguous, `/t` asks instead of guessing. You can also call the CLI directly: run `tt help` for every command.
+Each ticket gets a key such as `WEB-001`. If a name could mean two projects, `/t` asks instead of guessing.
+
+### 3. Start the day
+
+```text
+/t                                      → what's planned today, what's in progress, and the running timer
+```
+
+Or open the dashboard in the sidequest folder. The first command builds it once; after that, the second one is all you need:
+
+```bash
+npm run dashboard:build
+npm run dashboard:start                 # then open http://localhost:4321
+```
+
+**Today** shows the one ticket to focus on, its checklist and its timer.
+
+### 4. Track time
+
+Either run a timer, or log the time afterwards:
+
+```text
+/t start working on web-001             → starts a timer (switching tickets stops the old one)
+/t stop                                 → stops it and logs the time
+/t spent 1h30 on app-002                → logs time you already spent
+/t spent 45m on app yesterday           → time on the project itself, no ticket
+```
+
+The timer on the dashboard's **Today** screen does the same thing.
+
+### 5. Update and finish tickets
+
+```text
+/t web-001 is blocked, waiting on the API
+/t add subtasks to app-001: reproduce, fix, test on android
+/t done web-001
+```
+
+You can also drag cards between columns on the **Board**.
+
+### 6. Plan the week
+
+Give each project a share of your week once, and sidequest turns it into hours per day (see [Planning](#planning)):
+
+```text
+/t put 60% on the website                → every week
+/t put 80% on the app this week          → this week only
+```
+
+### 7. Wrap up the week
+
+```text
+/t how did my week go                   → a few lines: hours, what shipped
+/t write my weekly update               → a short update for your manager, saved on the Reports screen
+```
+
+On the dashboard, **Reports** shows the week, month or quarter, and has **Copy as update** and **Save as PDF**.
+
+### Good to know
+
+- `/t` works from any folder. Outside a linked folder, just name the project.
+- Everything `/t` does goes through the `tt` command, so you can type it yourself. Run `tt help` for every command.
+- Changes from `/t` appear on the dashboard within a second, and dashboard edits are visible to `/t` straight away.
+- Something not working? Run `npm run setup` in the sidequest folder. It checks everything and says what to fix.
 
 ## Planning
 
