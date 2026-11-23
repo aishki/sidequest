@@ -9,6 +9,9 @@ import {
   type TicketStatus,
 } from '../core/parse.ts';
 import {
+  buildReport, draftSummary, getSummary, parsePeriod, periodLabel, periodRange, saveSummary, summaryFacts,
+} from '../core/reports.ts';
+import {
   applyTimezone, clearWeekShares, dayHours, defaultShares, effectiveShares, getSettings, getWeekPlan, setSettings,
   setShare, setWeekend, type SettingsPatch, type WeekendDay,
 } from '../core/planning.ts';
@@ -25,6 +28,12 @@ const SRC = 'cli' as const;
 const argv = process.argv.slice(2);
 const json = argv.includes('--json');
 const args = argv.filter((a) => a !== '--json');
+
+async function readStdin(): Promise<string> {
+  let s = '';
+  for await (const chunk of process.stdin) s += chunk;
+  return s;
+}
 
 const out = (text: string, data: unknown) => console.log(json ? JSON.stringify(data, null, 2) : text);
 
@@ -121,6 +130,13 @@ Planning
   tt weekend sat|sun <hours|off> [--on project] [--week DAY]
   tt weekend <sat-hours> <sun-hours> [--on project] [--week DAY]
   tt weekend off [--week DAY]       weekend hours count for that one week only
+
+Reports
+  tt report [week|month|quarter] [--day DAY]     the numbers: hours vs plan, shipped, on time
+  tt summary [week|month|quarter] [--day DAY]    the written update for that period
+  tt summary save [period] [--day DAY] [--text TEXT]   save it (text from --text or stdin)
+  tt summary draft [period] [--day DAY]          let Claude Code draft it (runs claude -p)
+  tt summary clear [period] [--day DAY]
 
 project: prefix (WEB), alias (web, site), full name, or "this" for the current folder.
 DAY: today, tomorrow, yesterday, mon..sun, or YYYY-MM-DD.
@@ -416,6 +432,43 @@ const commands: Record<string, (rest: string[]) => Promise<void>> = {
       `Meetings:  ${s.meetingHours ? `${s.meetingHours}h a week` : 'none'}`,
       `Planned:   ${focus}h of project work, ${+(focus / s.workDays.length).toFixed(2)}h a day`,
     ].filter(Boolean).join('\n'), s);
+  },
+
+  async report(rest) {
+    const { values, positionals } = parse(rest, { day: { type: 'string' } });
+    const r = await buildReport(parsePeriod(positionals[0]), values.day ? parseDay(values.day, 'past') : today());
+    const s = r.stats;
+    const extra = [
+      s.dueCount ? `On time: ${s.onTimeCount} of ${s.dueCount} with a due date` : '',
+      s.avgDaysToDone != null ? `Start to done: ${s.avgDaysToDone.toFixed(1)} days on average` : '',
+      s.launchFilms ? `Launch films: ${s.launchFilms}` : '',
+    ].filter(Boolean);
+    const summary = r.summary ? `\n\nSummary (${r.summary.author === 'claude' ? 'drafted by Claude' : 'edited'}):\n${r.summary.body}` : '\n\nNo written summary yet.';
+    out(`${summaryFacts(r)}${extra.length ? `\n\n${extra.join('\n')}` : ''}${summary}`, r);
+  },
+
+  async summary(rest) {
+    const { values, positionals } = parse(rest, { day: { type: 'string' }, text: { type: 'string' } });
+    const action = ['save', 'draft', 'clear', 'show'].includes(positionals[0]?.toLowerCase()) ? positionals.shift()!.toLowerCase() : 'show';
+    const period = parsePeriod(positionals[0]);
+    const day = values.day ? parseDay(values.day, 'past') : today();
+    const { from, to } = periodRange(period, day);
+    const name = periodLabel(period, from, to);
+    if (action === 'show') {
+      const s = await getSummary(period, from);
+      return out(s ? `${name}\n\n${s.body}` : `No summary for ${name} yet. Write one with tt summary save, or tt summary draft.`, { period, from, summary: s });
+    }
+    if (action === 'draft') {
+      const r = await draftSummary(period, day, SRC);
+      return out(`${name}\n\n${r.summary!.body}\n\nSaved. Edit it on the Reports screen or with tt summary save.`, r);
+    }
+    let text = '';
+    if (action === 'save') {
+      text = values.text ?? (process.stdin.isTTY ? '' : await readStdin());
+      if (!text.trim()) throw new UserError('No text. Use --text "…" or pipe the summary in.');
+    }
+    const r = await saveSummary(period, day, text, 'claude', SRC);
+    out(r.summary ? `Saved the summary for ${name}.` : `Removed the summary for ${name}.`, r);
   },
 
   async weekend(rest) {
