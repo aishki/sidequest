@@ -17,6 +17,7 @@ import {
   clearWeekShares, dayHours, dayTargets, defaultShares, effectiveShares, entriesBetween, getSettings, getWeekPlan,
   plannable, rangeTargets, setSettings, setShares, setWeekend, sumBy,
 } from '../../src/core/planning.ts';
+import { buildReport, draftSummary, parsePeriod, saveSummary } from '../../src/core/reports.ts';
 
 const SRC: Source = 'dashboard';
 const OPEN: TicketStatus[] = ['inbox', 'todo', 'in_progress', 'blocked'];
@@ -427,40 +428,20 @@ route('DELETE', '/api/shares', async ({ url }) => {
 // ---------- reports ----------
 
 route('GET', '/api/reports', async ({ url }) => {
-  const period = url.searchParams.get('period') === 'month' ? 'month' : 'week';
-  const anchor = optDay(url.searchParams.get('day') ?? today(), 'Day') ?? today();
-  let from: string, to: string;
-  if (period === 'week') { from = mondayOf(anchor); to = addDays(from, 7); }
-  else {
-    from = `${anchor.slice(0, 7)}-01`;
-    const d = startOfDay(from); d.setMonth(d.getMonth() + 1); to = isoDate(d);
-  }
-  const [projects, s, shipped, entries, created] = await Promise.all([
-    listProjects(), getSettings(),
-    listTickets({ doneBetween: { from: startOfDay(from), to: startOfDay(to) }, limit: MAX }),
-    entriesBetween(from, to),
-    // Tickets created in the range that still exist, so deleted ones don't inflate the count.
-    db.select({ n: count() }).from(schema.tickets).where(and(
-      gte(schema.tickets.createdAt, startOfDay(from)), lt(schema.tickets.createdAt, startOfDay(to)),
-    )),
-  ]);
-  const { totals, weekend: weekendTargets } = await rangeTargets(from, to, projects, s);
-  const isWeekend = (d: string) => [0, 6].includes(weekday(d));
-  const weekdayLogged = sumBy(entries.filter((e) => !isWeekend(e.day)), (e) => e.projectId, (e) => e.minutes);
-  const weekendLogged = sumBy(entries.filter((e) => isWeekend(e.day)), (e) => e.projectId, (e) => e.minutes);
-  const daily = sumBy(entries, (e) => e.day, (e) => e.minutes);
-  const days: { day: string; minutes: number }[] = [];
-  for (let d = from; d < to; d = addDays(d, 1)) days.push({ day: d, minutes: daily.get(d) ?? 0 });
-  return {
-    period, from, to, today: today(),
-    created: created[0].n,
-    shipped,
-    days,
-    projects: projects.map((p) => ({
-      id: p.id, name: p.name, prefix: p.prefix, color: p.color, isOverhead: p.isOverhead,
-      targetMin: totals.get(p.id) ?? 0, weekendTargetMin: weekendTargets.get(p.id) ?? 0,
-      weekdayMin: weekdayLogged.get(p.id) ?? 0, weekendMin: weekendLogged.get(p.id) ?? 0,
-      shipped: shipped.filter((t) => t.projectId === p.id).length,
-    })),
-  };
+  const period = parsePeriod(url.searchParams.get('period'));
+  return buildReport(period, optDay(url.searchParams.get('day') ?? today(), 'Day') ?? today());
+});
+
+/** Body: { period, day, body }. An empty body removes the summary. */
+route('PUT', '/api/reports/summary', async ({ body }) => {
+  const period = parsePeriod(str(body.period, 'period'));
+  const day = optDay(str(body.day, 'day'), 'Day') ?? today();
+  if (typeof body.body !== 'string') throw new UserError('body must be text.');
+  return saveSummary(period, day, body.body, 'you', SRC);
+});
+
+/** Body: { period, day }. Runs the local Claude Code CLI to draft the summary, then saves it. */
+route('POST', '/api/reports/summary/draft', async ({ body }) => {
+  const period = parsePeriod(str(body.period, 'period'));
+  return draftSummary(period, optDay(str(body.day, 'day'), 'Day') ?? today(), SRC);
 });
