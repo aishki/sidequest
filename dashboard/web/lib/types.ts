@@ -68,8 +68,17 @@ export type WeekData = {
   planned: Ticket[]; unplanned: Ticket[];
 };
 
+export type ReportPeriod = 'week' | 'month' | 'quarter';
+export type ShippedTicket = Ticket & { doneDay: string; minutes: number; startedAt: string; daysToDone: number; onTime: boolean | null };
+
 export type ReportData = {
-  period: 'week' | 'month'; from: string; to: string; today: string; created: number;
-  shipped: Ticket[]; days: { day: string; minutes: number }[];
+  period: ReportPeriod; from: string; to: string; today: string; label: string;
+  stats: {
+    loggedMin: number; targetMin: number; weekendMin: number; shipped: number; created: number;
+    dueCount: number; onTimeCount: number; avgDaysToDone: number | null; launchFilms: number;
+  };
+  days: { day: string; minutes: number; byProject: Record<number, number> }[];
   projects: (ProjectLite & { targetMin: number; weekendTargetMin: number; weekdayMin: number; weekendMin: number; shipped: number })[];
+  shipped: ShippedTicket[];
+  summary: { body: string; author: string; updatedAt: string } | null;
 };
