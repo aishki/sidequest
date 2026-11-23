@@ -1,0 +1,10 @@
+{
+  "name": "sidequest",
+  "version": "0.1.0",
+  "description": "Every ticket is a quest. /t adds, updates and logs time on tickets in plain words, backed by a local Postgres and the tt CLI.",
+  "author": { "name": "aishki" },
+  "homepage": "https://github.com/aishki/sidequest",
+  "repository": "https://github.com/aishki/sidequest",
+  "license": "MIT",
+  "keywords": ["tickets", "todo", "time-tracking", "postgres"]
+}

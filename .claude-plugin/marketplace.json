@@ -1,0 +1,13 @@
+{
+  "name": "sidequest",
+  "owner": { "name": "aishki" },
+  "metadata": { "description": "sidequest: a /t ticket tracker for Claude Code with local Postgres." },
+  "plugins": [
+    {
+      "name": "sidequest",
+      "source": "./",
+      "description": "Every ticket is a quest. /t ticket tracking in plain words, backed by local Postgres.",
+      "version": "0.1.0"
+    }
+  ]
+}
