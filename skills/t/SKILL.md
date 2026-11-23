@@ -62,6 +62,8 @@ tt share | tt share <project> <pct> [--week DAY] | tt share reset --week DAY
 tt settings [--hours 40] [--days mon-fri] [--meetings 3h|none]
 tt weekend sat|sun <hours|off> [--on project] [--week DAY]
 tt weekend <sat-hours> <sun-hours> [--on project] [--week DAY] | tt weekend off [--week DAY]
+tt report [week|month|quarter] [--day DAY] [--json]
+tt summary [period] [--day DAY] | tt summary save [period] [--day DAY] (text on stdin) | tt summary clear [period]
 tt projects | tt resolve <name> | tt link <project> | tt here
 ```
 
@@ -82,6 +84,15 @@ DAY is today, tomorrow, yesterday, mon…sun, or YYYY-MM-DD. Durations look like
 - "how's my week split" → `tt share`.
 - "I work 35 hours", "I have 3h of meetings a week", "I work Mon–Thu" → `tt settings --hours 35`, `--meetings 3h`, `--days mon-thu`. These change every week, so confirm in one line first.
 - Overhead projects (e.g. Admin) never get planned hours.
+
+## Reports and the update summary
+
+- "how did my week go", "what did I ship this month" → `tt report` (or `month`, `quarter`; `--day` with a day in an earlier period). Answer in a few lines; don't paste the whole report.
+- "write my weekly update" / "summarize my month for my boss":
+  1. Run `tt report <period> --json` and write the update from it: first person, plain text, one opening sentence, then 3 to 6 lines starting with "- ". Lead with what shipped (titles as written, key in brackets), then hours where they say something: the total, the biggest projects, clear gaps against plan, and weekend hours as extra time. Skip projects with no time logged. Under 130 words.
+  2. Use only facts from the report. Never invent reasons, outcomes, blockers or next steps. If the user tells you any, add them.
+  3. Show it, then save it so it appears on the Reports screen: pipe it to `tt summary save <period> [--day DAY]`. If a summary already exists (`summary` in the JSON), ask before replacing it, since the user may have edited it.
+- The dashboard can also draft it (**Draft with Claude** on Reports), which runs `tt summary draft` the same way.
 
 ## No arguments
 
