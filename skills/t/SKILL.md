@@ -18,7 +18,7 @@ You turn plain words into `tt` commands. `tt` is the sidequest CLI. It validates
    - Never turn a word into a project yourself (for example "website" into a project whose name merely contains "web"). `tt` only accepts exact prefixes, names and aliases, and asks when a word fits several.
 3. **"this" / "here"** means the current folder's project. Pass `this` to `tt`. If the folder isn't linked yet (exit 2), ask which project it is, run `tt link <project>`, then carry on. Don't ask again in that folder.
 4. **Deleting** needs the user's explicit yes in this conversation. `tt delete KEY` refuses without `--yes`.
-5. If `tt` isn't found, tell the user to run `npm link` in their sidequest folder, then stop.
+5. If `tt` isn't found or says sidequest isn't set up, follow **Setup** below.
 
 ## Ask little
 
@@ -65,6 +65,7 @@ tt weekend <sat-hours> <sun-hours> [--on project] [--week DAY] | tt weekend off 
 tt report [week|month|quarter] [--day DAY] [--json]
 tt summary [period] [--day DAY] | tt summary save [period] [--day DAY] (text on stdin) | tt summary clear [period]
 tt projects | tt resolve <name> | tt link <project> | tt here
+tt projects add <name> --prefix P [--alias a] [--share N] [--color #hex] [--overhead]
 ```
 
 DAY is today, tomorrow, yesterday, mon…sun, or YYYY-MM-DD. Durations look like 2h, 45m, 1h30m or 1:30. Keys accept any case: web-14, WEB-014 and web14 all work. Always quote titles and notes.
@@ -93,6 +94,21 @@ DAY is today, tomorrow, yesterday, mon…sun, or YYYY-MM-DD. Durations look like
   2. Use only facts from the report. Never invent reasons, outcomes, blockers or next steps. If the user tells you any, add them.
   3. Show it, then save it so it appears on the Reports screen: pipe it to `tt summary save <period> [--day DAY]`. If a summary already exists (`summary` in the JSON), ask before replacing it, since the user may have edited it.
 - The dashboard can also draft it (**Draft with Claude** on Reports), which runs `tt summary draft` the same way.
+
+## Setup
+
+Run this when the user types `/t setup`, when `tt` isn't found, or when `tt` says sidequest isn't set up or can't reach Postgres. These steps use `git`, `node`, `npm` and `docker` as well as `tt`.
+
+1. **Find the sidequest folder.** `tt` names it in its errors and on the last line of `tt help`. If `tt` isn't found, ask once whether they already have a sidequest folder. If not, clone it to `~/sidequest` (`git clone https://github.com/aishki/sidequest ~/sidequest`). Use a lasting folder like that, never the plugin's own folder, which is replaced on updates.
+2. **Check:** `node scripts/setup.ts check --json` in that folder. Then follow `next`, one step at a time, and re-check after each one.
+3. **No database yet** (`database.kind` is `none`): ask once, Docker or their own Postgres.
+   - Docker: `node scripts/setup.ts docker`. It writes a generated password to `.env` and starts Postgres 17 on 127.0.0.1:5433.
+   - Their own Postgres: ask them to run `bash scripts/create-db.sh` **in their own terminal** and tell you when it's done. It asks for the Postgres admin password. **Never** run it yourself, and never ask for, read or type that password.
+4. **Install:** `node scripts/setup.ts install` (npm packages, tables, `tt` on the PATH).
+5. **Projects** (`projects` is 0): ask in one question what they work on: names, short nicknames, and a rough share of the week. Propose a 2–6 letter prefix per project and an Admin overhead bucket, confirm the list in one line, then run `tt projects add "<name>" --prefix P --alias a --share N` for each (`--overhead` for Admin). Every alias must be unique, so drop ambiguous ones and let `/t` ask instead.
+6. **Finish** with the check showing ready, then suggest `tt link <project>` inside each project's folder and `npm run dashboard` for the dashboard.
+
+Never print or repeat the contents of `.env`.
 
 ## No arguments
 

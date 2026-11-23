@@ -14,24 +14,41 @@ Every ticket is a quest. **sidequest** is a personal ticket and to-do tracker yo
 
 ## Install
 
-You need Node 22.18 or newer and PostgreSQL running locally.
+You need Node 22.18 or newer, and either Docker or PostgreSQL.
+
+**The guided way.** Install the plugin in Claude Code, then let `/t` do the rest:
+
+```text
+/plugin marketplace add aishki/sidequest
+/plugin install sidequest@sidequest
+/t setup
+```
+
+`/t setup` clones sidequest to `~/sidequest` (or uses your clone), sets up the database, installs the `tt` command and asks about your projects. If you use your own Postgres, it asks you to run one script in your own terminal, so your admin password never goes through Claude.
+
+**By hand:**
 
 ```bash
 git clone https://github.com/aishki/sidequest && cd sidequest
-npm install
-bash scripts/create-db.sh            # creates the sidequest role + database, writes .env
-cp seed/projects.example.json seed/projects.json   # then edit: your projects, aliases, colors, weekly shares
-npm run db:migrate && npm run db:seed
-npm link                             # puts `tt` on your PATH
+npm run setup docker                 # Postgres 17 in Docker, password generated into .env
+#   or, with your own Postgres:  bash scripts/create-db.sh   (asks for the admin password)
+npm run setup install                # npm install, tables, `tt` on your PATH
+tt projects add "Website" --prefix WEB --alias site --share 60
+tt projects add "Admin" --prefix ADM --overhead
+npm run setup                        # checks everything and says what's next
 ```
 
-Then, in Claude Code:
+You can also list your projects in `seed/projects.json` (copy `seed/projects.example.json`) and load them with `npm run db:seed`. The file is git-ignored, so your project list stays on your machine.
 
-```text
-/plugin install sidequest --marketplace aishki/sidequest
+### Docker
+
+`compose.yaml` runs Postgres 17 on `127.0.0.1:5433` (5433 so it never clashes with a Postgres you already have; set `SIDEQUEST_DB_PORT` in `.env` to change it). It listens on this computer only. The data lives in the `sidequest_pgdata` volume, so it survives restarts and updates. Start it again after a reboot with `docker compose up -d` if Docker Desktop doesn't. The password is set when the volume is first created: if you lose `.env`, `docker compose down -v` starts over with an empty database.
+
+### Updating
+
+```bash
+git pull && npm run setup install
 ```
-
-`seed/projects.json` is git-ignored, so your project list stays on your machine.
 
 ## Using it
 
