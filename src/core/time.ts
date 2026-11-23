@@ -2,9 +2,9 @@ import { and, desc, eq, gte, isNull, lt, sql as dsql } from 'drizzle-orm';
 import { db, logEvent, schema, type Exec, type Source } from './db.ts';
 import { listProjects, matchProject, type Project } from './projects.ts';
 import { getTicket, updateTicket, type Ticket } from './tickets.ts';
-import { addDays, fmtMin, mondayOf, parseKey, startOfDay, UserError } from './parse.ts';
+import { fmtMin, parseKey, startOfDay, UserError } from './parse.ts';
 
-const { timeEntries, projects, tickets, weekPlans } = schema;
+const { timeEntries, projects, tickets } = schema;
 
 /** A ticket key (WEB-014) or a project name (web, admin, this). */
 export type Target = { project: Project; ticket?: Ticket };
@@ -129,26 +129,4 @@ export async function ticketTime(ticketId: number, x: Exec = db) {
   const recent = await x.select().from(timeEntries).where(eq(timeEntries.ticketId, ticketId))
     .orderBy(desc(timeEntries.startedAt)).limit(5);
   return { minutes, recent };
-}
-
-// ---------- weekend opt-in ----------
-
-/** Opts one week in to planned weekend hours. 0 and 0 turns it back off. */
-export async function setWeekend(day: string, saturdayHours: number, sundayHours: number, source: Source) {
-  for (const h of [saturdayHours, sundayHours]) {
-    if (!(h >= 0 && h <= 16)) throw new UserError('Weekend hours must be between 0 and 16 per day.');
-  }
-  const weekStart = mondayOf(day);
-  return db.transaction(async (tx) => {
-    await tx.insert(weekPlans).values({ weekStart, saturdayHours, sundayHours })
-      .onConflictDoUpdate({ target: weekPlans.weekStart, set: { saturdayHours, sundayHours } });
-    await logEvent(tx, { kind: 'week.weekend', source, data: { weekStart, saturdayHours, sundayHours } });
-    return { weekStart, saturday: addDays(weekStart, 5), sunday: addDays(weekStart, 6), saturdayHours, sundayHours };
-  });
-}
-
-export async function getWeekPlan(day: string, x: Exec = db) {
-  const weekStart = mondayOf(day);
-  const [row] = await x.select().from(weekPlans).where(eq(weekPlans.weekStart, weekStart));
-  return { weekStart, saturdayHours: row?.saturdayHours ?? 0, sundayHours: row?.sundayHours ?? 0 };
 }

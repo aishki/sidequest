@@ -143,6 +143,49 @@ export function parseDay(input: string, dir: 'future' | 'past', base = today()):
   throw new UserError(`Can't read date "${input}". Use YYYY-MM-DD, today, tomorrow, yesterday or a weekday.`);
 }
 
+/** "mon-fri", "mon,wed,fri", "mon-fri,sat", "weekdays" or "all" -> weekday numbers (0 = Sunday), sorted. */
+export function parseWorkDays(input: string): number[] {
+  const s = input.trim().toLowerCase();
+  if (s === 'weekdays') return [1, 2, 3, 4, 5];
+  if (s === 'all' || s === 'everyday' || s === 'every day') return [0, 1, 2, 3, 4, 5, 6];
+  const one = (t: string) => {
+    const i = t.length >= 2 ? DAY_NAMES.findIndex((d) => d.startsWith(t)) : -1;
+    if (i < 0 || (t.length < 3 && ['t', 's'].includes(t[0]) && t !== 'tu' && t !== 'th' && t !== 'sa' && t !== 'su')) {
+      throw new UserError(`Can't read the day "${t}". Use mon, tue, wed, thu, fri, sat, sun, e.g. --days mon-fri.`);
+    }
+    return i;
+  };
+  const out = new Set<number>();
+  for (const part of s.split(/[\s,]+/).filter(Boolean)) {
+    const [a, b] = part.split('-');
+    if (b === undefined) { out.add(one(a)); continue; }
+    const from = one(a), to = one(b);
+    for (let d = from; ; d = (d + 1) % 7) { out.add(d); if (d === to) break; }
+  }
+  if (!out.size) throw new UserError('Pick at least one work day, e.g. --days mon-fri.');
+  return [...out].sort();
+}
+
+/** Hours as "3", "3h", "2.5h", "90m" or "1h30m". */
+export function parseHours(input: string): number {
+  const s = input.trim().toLowerCase();
+  if (/^\d+(\.\d+)?h?$/.test(s)) return parseFloat(s);
+  return parseDuration(s) / 60;
+}
+
+const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** [1,2,3,4,5] -> "Mon–Fri"; [1,3,5] -> "Mon, Wed, Fri". */
+export function fmtWorkDays(days: number[]): string {
+  const order = [...days].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)); // Monday first
+  const runs: number[][] = [];
+  for (const d of order) {
+    const last = runs.at(-1);
+    if (last && (last.at(-1)! + 1) % 7 === d) last.push(d); else runs.push([d]);
+  }
+  return runs.map((r) => (r.length >= 3 ? `${WEEKDAY_SHORT[r[0]]}–${WEEKDAY_SHORT[r.at(-1)!]}` : r.map((d) => WEEKDAY_SHORT[d]).join(', '))).join(', ');
+}
+
 /** Like parseDay, but "none" / "clear" / "-" mean no date. */
 export function parseDayOrNone(input: string, dir: 'future' | 'past'): string | null {
   return ['none', 'clear', '-', 'null'].includes(input.trim().toLowerCase()) ? null : parseDay(input, dir);

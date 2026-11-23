@@ -6,7 +6,7 @@ import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sql } from '../../src/core/db.ts';
 import { handleApi } from './api.ts';
-import { applyTimezone } from './settings.ts';
+import { applyTimezone } from '../../src/core/planning.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const dist = join(root, 'dist');
