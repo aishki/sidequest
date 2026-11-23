@@ -1,10 +1,11 @@
-import { useState, type DragEvent, type FormEvent } from 'react';
+import { useState, type DragEvent } from 'react';
 import { api, useAction, useApi } from '../lib/api.ts';
 import { addDays, fmtDay, hrs, parseIso, weekdayOf, weekNo } from '../lib/format.ts';
 import { openTicket, setParams } from '../lib/router.ts';
 import type { Ticket, WeekData } from '../lib/types.ts';
 import { Dot, Loading } from '../components/bits.tsx';
 import { I } from '../components/icons.tsx';
+import { Plan } from './WeekPlan.tsx';
 
 export function Week({ params }: { params: URLSearchParams }) {
   const day = params.get('day');
@@ -60,7 +61,7 @@ export function Week({ params }: { params: URLSearchParams }) {
         </div>
       </header>
 
-      <Weekend data={data} />
+      <Plan data={data} tab={params.get('plan')} />
 
       <div className="week-grid">
         {data.days.map((d, i) => {
@@ -69,6 +70,9 @@ export function Week({ params }: { params: URLSearchParams }) {
           const logged = data.cells[i].reduce((n, c) => n + c.loggedMin, 0);
           const off = target === 0;
           const tickets = data.planned.filter((t) => t.plannedOn === d);
+          const estMin = tickets.reduce((n, t) => n + (t.estimateMin ?? 0), 0);
+          const capMin = data.hours[i] * 60;
+          const overCap = estMin > capMin + 0.5;
           return (
             <section key={d} className="day" aria-label={fmtDay(d)}>
               <div className={`day-head${d === data.today ? ' is-today' : ''}${off ? ' off' : ''}`}>
@@ -77,6 +81,12 @@ export function Week({ params }: { params: URLSearchParams }) {
                   {d === data.today && <span className="small" style={{ color: 'var(--accent)' }}>Today</span>}
                 </span>
                 <span className="small mono muted">{off ? (wd === 0 || wd === 6 ? 'Off' : 'No target') : `${hrs(logged)} / ${hrs(target)}`}</span>
+                {estMin > 0 && (
+                  <span className={`small mono${overCap ? ' warn' : ' muted'}`}
+                    title={overCap ? `Planned tickets are estimated at ${hrs(estMin)}, more than the ${hrs(capMin)} you have this day.` : `Planned tickets are estimated at ${hrs(estMin)} of the ${hrs(capMin)} you have this day.`}>
+                    {overCap && <span aria-hidden="true">▲ </span>}est {hrs(estMin)}{overCap ? ' · over' : ''}
+                  </span>
+                )}
               </div>
               <div {...zone(d, d)}>
                 {tickets.map(card)}
@@ -98,43 +108,6 @@ export function Week({ params }: { params: URLSearchParams }) {
 
       <HoursGrid data={data} />
     </div>
-  );
-}
-
-function Weekend({ data }: { data: WeekData }) {
-  const { run, busy } = useAction();
-  const [sat, setSat] = useState(String(data.saturdayHours));
-  const [sun, setSun] = useState(String(data.sundayHours));
-  const [editing, setEditing] = useState(false);
-  const on = data.saturdayHours > 0 || data.sundayHours > 0;
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    if (await run(() => api.post('/api/week/weekend', { day: data.weekStart, saturdayHours: Number(sat) || 0, sundayHours: Number(sun) || 0 }), 'Weekend hours saved.')) setEditing(false);
-  }
-  if (!editing) {
-    return (
-      <div className="row-flex small">
-        <span className="muted">{on
-          ? <>Weekend work this week: Sat <span className="mono-ink">{data.saturdayHours}h</span>, Sun <span className="mono-ink">{data.sundayHours}h</span>.</>
-          : <>Weekends are off. Weekday target: <span className="mono-ink">{data.weekHours}h</span> over {data.workDays.length} days.</>}</span>
-        <button type="button" className="btn quiet sm" onClick={() => { setSat(String(data.saturdayHours)); setSun(String(data.sundayHours)); setEditing(true); }}>
-          {on ? 'Change weekend' : 'Work this weekend'}
-        </button>
-      </div>
-    );
-  }
-  return (
-    <form className="row-flex" onSubmit={save} aria-label="Weekend hours">
-      <label className="field" style={{ width: 120 }}><span>Saturday hours</span>
-        <input className="input mono" type="number" min={0} max={16} step={0.5} value={sat} onChange={(e) => setSat(e.target.value)} /></label>
-      <label className="field" style={{ width: 120 }}><span>Sunday hours</span>
-        <input className="input mono" type="number" min={0} max={16} step={0.5} value={sun} onChange={(e) => setSun(e.target.value)} /></label>
-      <div className="row-flex" style={{ alignSelf: 'flex-end' }}>
-        <button type="submit" className="btn primary" disabled={busy}>Save</button>
-        <button type="button" className="btn quiet" onClick={() => setEditing(false)}>Cancel</button>
-      </div>
-      <p className="hint" style={{ width: '100%' }}>Weekend hours are extra and only count for this week. Set both to 0 to turn the weekend off.</p>
-    </form>
   );
 }
 
@@ -168,7 +141,7 @@ function HoursGrid({ data }: { data: WeekData }) {
           </tbody>
         </table>
       </div>
-      <p className="hint">Targets come from each project's share of your {data.weekHours}h week. Amber means over target.</p>
+      <p className="hint">Targets come from each project's share of the week{data.weekOverride ? ' (this week has its own split)' : ''}. Amber means over target.</p>
     </section>
   );
 }

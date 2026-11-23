@@ -7,14 +7,16 @@ import {
   updateTicket, type Ticket, type TicketFields,
 } from '../../src/core/tickets.ts';
 import {
-  cancelTimer, getWeekPlan, logTime, resolveTarget, runningTimer, setWeekend, startTimer, stopTimer, ticketTime,
+  cancelTimer, logTime, resolveTarget, runningTimer, startTimer, stopTimer, ticketTime,
 } from '../../src/core/time.ts';
 import {
   addDays, cleanTitle, isoDate, mondayOf, parseClock, parseDuration, parseKey, parsePriority, parseStatus, parseType,
   startOfDay, today, UserError, weekday, type TicketStatus,
 } from '../../src/core/parse.ts';
-import { dayTargets, entriesBetween, rangeTargets, sumBy } from './planning.ts';
-import { getSettings } from './settings.ts';
+import {
+  clearWeekShares, dayHours, dayTargets, defaultShares, effectiveShares, entriesBetween, getSettings, getWeekPlan,
+  plannable, rangeTargets, setSettings, setShares, setWeekend, sumBy,
+} from '../../src/core/planning.ts';
 
 const SRC: Source = 'dashboard';
 const OPEN: TicketStatus[] = ['inbox', 'todo', 'in_progress', 'blocked'];
@@ -214,19 +216,19 @@ route('GET', '/api/summary', async () => {
 route('GET', '/api/projects', async () => {
   const day = today();
   const ws = mondayOf(day);
-  const [projects, s, all, entries] = await Promise.all([
-    listProjects(), getSettings(), listTickets({ limit: MAX }), entriesBetween(ws, addDays(ws, 7)),
+  const [projects, s, all, entries, plan] = await Promise.all([
+    listProjects(), getSettings(), listTickets({ limit: MAX }), entriesBetween(ws, addDays(ws, 7)), getWeekPlan(ws),
   ]);
   const { totals } = await rangeTargets(ws, addDays(ws, 7), projects, s);
   const byProject = sumBy(entries, (e) => e.projectId, (e) => e.minutes);
-  const plannedPct = projects.filter((p) => !p.isOverhead).reduce((n, p) => n + p.weeklyPct, 0);
+  const shares = effectiveShares(projects, plan);
   return projects.map((p) => {
     const mine = all.filter((t) => t.projectId === p.id);
     const by = (st: TicketStatus) => mine.filter((t) => t.status === st).length;
     return {
       id: p.id, name: p.name, prefix: p.prefix, color: p.color, aliases: p.aliases, dirs: p.dirs,
       isOverhead: p.isOverhead,
-      sharePct: p.isOverhead || !plannedPct ? 0 : (p.weeklyPct / plannedPct) * 100,
+      sharePct: shares.get(p.id) ?? 0, weekOverride: plan.shares != null,
       weekTargetMin: totals.get(p.id) ?? 0, weekLoggedMin: byProject.get(p.id) ?? 0,
       counts: { inbox: by('inbox'), todo: by('todo'), in_progress: by('in_progress'), blocked: by('blocked'), done: by('done') },
       doneThisWeek: mine.filter((t) => t.doneAt && t.doneAt >= startOfDay(ws)).length,
@@ -361,9 +363,17 @@ route('GET', '/api/week', async ({ url }) => {
     listTickets({ planned: 'none', statuses: OPEN, limit: MAX }),
   ]);
   const logged = sumBy(entries, (e) => `${e.projectId}|${e.day}`, (e) => e.minutes);
+  const usual = defaultShares(projects);
+  const shares = effectiveShares(projects, plan);
   return {
-    weekStart: ws, today: today(), days, weekHours: s.weekHours, workDays: s.workDays,
+    weekStart: ws, today: today(), days,
+    settings: { weekHours: s.weekHours, workDays: s.workDays, meetingHours: s.meetingHours },
+    weekHours: s.weekHours, workDays: s.workDays,
     saturdayHours: plan.saturdayHours, sundayHours: plan.sundayHours,
+    saturdayProjectId: plan.saturdayProjectId, sundayProjectId: plan.sundayProjectId,
+    hours: days.map((d) => dayHours(d, s, plan)),
+    weekOverride: plan.shares != null,
+    shares: plannable(projects).map((p) => ({ projectId: p.id, usualPct: usual.get(p.id) ?? 0, pct: shares.get(p.id) ?? 0 })),
     projects: projects.map((p) => ({ id: p.id, name: p.name, prefix: p.prefix, color: p.color, isOverhead: p.isOverhead })),
     cells: days.map((d) => {
       const t = dayTargets(d, projects, s, plan);
@@ -376,7 +386,42 @@ route('GET', '/api/week', async ({ url }) => {
 
 route('POST', '/api/week/weekend', async ({ body }) => {
   const day = optDay(body.day, 'Week') ?? today();
-  return setWeekend(day, Number(body.saturdayHours ?? 0), Number(body.sundayHours ?? 0), SRC);
+  const side = (h: unknown, p: unknown) => (h === undefined ? undefined : {
+    hours: Number(h) || 0, projectId: p === undefined ? undefined : p === null || p === '' ? null : Number(p),
+  });
+  return setWeekend(day, {
+    saturday: side(body.saturdayHours, body.saturdayProjectId),
+    sunday: side(body.sundayHours, body.sundayProjectId),
+  }, SRC);
+});
+
+// ---------- planning ----------
+
+route('PATCH', '/api/settings', async ({ body }) => {
+  const patch: Parameters<typeof setSettings>[0] = {};
+  if (body.weekHours !== undefined) patch.weekHours = Number(body.weekHours);
+  if (body.meetingHours !== undefined) patch.meetingHours = Number(body.meetingHours);
+  if (body.workDays !== undefined) {
+    if (!Array.isArray(body.workDays)) throw new UserError('workDays must be a list of weekday numbers (0 = Sunday).');
+    patch.workDays = body.workDays.map(Number);
+  }
+  for (const [k, v] of Object.entries(patch)) if (typeof v === 'number' && !Number.isFinite(v)) throw new UserError(`${k} must be a number.`);
+  return setSettings(patch, SRC);
+});
+
+/** Saves a split: { shares: { [projectId]: pct }, week?: DAY }. With week it applies to that week only. */
+route('PUT', '/api/shares', async ({ body }) => {
+  if (!body.shares || typeof body.shares !== 'object') throw new UserError('Send shares as { projectId: percent }.');
+  const map = new Map(Object.entries(body.shares as Record<string, unknown>).map(([k, v]) => [Number(k), Number(v)]));
+  const week = body.week == null ? undefined : optDay(body.week, 'Week') ?? undefined;
+  const shares = await setShares(map, { week }, SRC);
+  return { week: week ? mondayOf(week) : null, shares: Object.fromEntries(shares) };
+});
+
+route('DELETE', '/api/shares', async ({ url }) => {
+  const day = optDay(url.searchParams.get('week'), 'Week');
+  if (!day) throw new UserError('Which week? Pass ?week=YYYY-MM-DD.');
+  return clearWeekShares(day, SRC);
 });
 
 // ---------- reports ----------

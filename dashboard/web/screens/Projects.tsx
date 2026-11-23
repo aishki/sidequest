@@ -10,6 +10,7 @@ export function Projects() {
     <div className="page wide">
       <header className="page-head">
         <div><span className="eyebrow">Week split and ticket counts</span><h1 className="title">Projects</h1></div>
+        <a className="btn sm" href={href('week', { plan: 'split' })}>Change split</a>
       </header>
       {!data ? <Loading error={error} /> : data.length === 0 ? (
         <div className="empty">No projects yet. Load them with <code>npm run db:seed</code> (see the README).</div>
@@ -27,7 +28,7 @@ export function Projects() {
                 </div>
                 <div className="stack" style={{ gap: 6 }}>
                   <div className="row-flex small" style={{ justifyContent: 'space-between' }}>
-                    <span className="muted">{p.isOverhead ? 'Overhead, no target' : `${p.sharePct.toFixed(0)}% of the week`}</span>
+                    <span className="muted">{p.isOverhead ? 'Overhead, no target' : `${+p.sharePct.toFixed(1)}% of ${p.weekOverride ? 'this' : 'the'} week`}</span>
                     <span className="mono">{hrs(p.weekLoggedMin)}{p.weekTargetMin ? ` / ${hrs(p.weekTargetMin)}` : ''}</span>
                   </div>
                   <div className={`track thin${over ? ' over' : ''}`} role="img" aria-label={`${hrs(p.weekLoggedMin)} of ${hrs(p.weekTargetMin)} this week`}>
@@ -56,7 +57,7 @@ export function Projects() {
           })}
         </div>
       )}
-      <p className="hint">Projects come from your seed file for now; link a folder with <code>tt link</code>. Editing projects here comes with planning (phase 4).</p>
+      <p className="hint">Projects come from your seed file; link a folder with <code>tt link</code>. Change how the week is split on the Week plan, or with <code>tt share</code>.</p>
     </div>
   );
 }

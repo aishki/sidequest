@@ -47,13 +47,23 @@ export type TimeEntry = { id: number; startedAt: string; endedAt: string | null;
 export type TicketDetail = { ticket: Ticket; subtasks: Subtask[]; loggedMin: number; recent: TimeEntry[]; history: EventRow[] };
 
 export type ProjectCard = ProjectLite & {
-  aliases: string[]; dirs: string[]; sharePct: number; weekTargetMin: number; weekLoggedMin: number;
+  aliases: string[]; dirs: string[]; sharePct: number; weekOverride: boolean; weekTargetMin: number; weekLoggedMin: number;
   counts: Record<Status, number>; doneThisWeek: number;
 };
 
+export type PlanSettings = { weekHours: number; workDays: number[]; meetingHours: number };
+export type Share = { projectId: number; usualPct: number; pct: number };
+
 export type WeekData = {
   weekStart: string; today: string; days: string[]; weekHours: number; workDays: number[];
-  saturdayHours: number; sundayHours: number; projects: ProjectLite[];
+  settings: PlanSettings;
+  saturdayHours: number; sundayHours: number; saturdayProjectId: number | null; sundayProjectId: number | null;
+  /** Hours of project work planned for each of the 7 days. */
+  hours: number[];
+  /** True when this week has its own split instead of the usual one. */
+  weekOverride: boolean;
+  shares: Share[];
+  projects: ProjectLite[];
   cells: { projectId: number; targetMin: number; loggedMin: number }[][];
   planned: Ticket[]; unplanned: Ticket[];
 };
