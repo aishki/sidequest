@@ -2,12 +2,12 @@
 
 Every ticket is a quest. **sidequest** is a personal ticket and to-do tracker you drive by typing `/t` in any Claude Code terminal, with a dark-mode dashboard on top and a local PostgreSQL database underneath.
 
-> **Status:** early build. `/t`, the `tt` CLI and the dashboard work. Smarter planning, written report summaries and phone access come next.
+> **Status:** early build. `/t`, the `tt` CLI, the dashboard and weekly planning work. Written report summaries and phone access come next.
 
 ## What it does
 
 - **`/t` from anywhere.** Add or update tickets in plain words (`/t the site login needs a loading state`). Claude fills in the project, type and priority, and asks when something is unclear.
-- **Weekly plan.** Give each project a share of your week; sidequest turns it into recommended hours per day.
+- **Weekly plan.** Give each project a share of your week; sidequest turns it into recommended hours per day, after meetings. Change the split for one week only, and opt in to weekend hours when you want them.
 - **Dashboard.** Today, Board, Projects, Week plan, Reports and All tickets, all editable, all dark mode.
 - **Reports.** Weekly and monthly metrics (tickets shipped, hours by project, planned vs logged) plus a written summary you can paste into an update for your manager.
 - **Local first.** Your tickets live in Postgres on your own machine. Nothing is sent anywhere.
@@ -46,6 +46,20 @@ Then, in Claude Code:
 
 When a project name is ambiguous, `/t` asks instead of guessing. You can also call the CLI directly: run `tt help` for every command.
 
+## Planning
+
+Your week is a number of hours (40 by default) on chosen work days, minus meetings. Each project gets a share of what's left, and sidequest shows it as hours per week and per day. Overhead projects such as Admin are never planned.
+
+```text
+/t put 40% on the app this week      → tt share app 40 --week today   (the others scale to fit)
+/t plan saturday 3h on the website   → tt weekend sat 3h --on web
+/t I have 3h of meetings a week      → tt settings --meetings 3h
+tt share                             → this week's split in % and hours
+tt share reset --week today          → back to the usual split
+```
+
+Weekends get no planned hours unless you opt in, and an opt-in covers that one week. You can always log weekend time. The same controls are under **Edit plan** on the Week plan screen.
+
 ## Dashboard
 
 ```bash
@@ -60,8 +74,8 @@ Six screens, all editable, all dark mode:
 |---|---|
 | **Today** | The one ticket to focus on, its checklist and timer, then today's hours per project. |
 | **Board** | Inbox, To do, In progress, Blocked, Done. Drag a card to change its status. |
-| **Projects** | Each project's share of the week and its ticket counts. |
-| **Week plan** | Drag tickets onto days, see logged vs target hours, and switch weekends on or off. |
+| **Projects** | Each project's share of the week, hours logged against it, and its ticket counts. |
+| **Week plan** | Drag tickets onto days and see logged vs target hours. **Edit plan** changes the split (this week or every week), your hours, meetings and work days, and weekend hours. |
 | **Reports** | Week or month: hours per day, hours by project, what shipped. Copies as plain text. |
 | **All tickets** | Search, filter and sort everything. |
 
