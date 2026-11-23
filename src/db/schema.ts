@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigserial, boolean, check, date, index, integer, jsonb, numeric, pgEnum, pgTable,
-  serial, smallint, text, timestamp, uniqueIndex,
+  primaryKey, serial, smallint, text, timestamp, uniqueIndex,
 } from 'drizzle-orm/pg-core';
 
 export const ticketType = pgEnum('ticket_type', [
@@ -123,3 +123,19 @@ export const settings = pgTable('settings', {
   value: jsonb('value').notNull(),
   updatedAt: ts('updated_at').notNull().defaultNow(),
 });
+
+export const reportPeriod = pgEnum('report_period', ['week', 'month', 'quarter']);
+
+/** The written summary for one report period, drafted by Claude and editable by hand. */
+export const reportSummaries = pgTable('report_summaries', {
+  period: reportPeriod('period').notNull(),
+  /** First day of the period: a Monday, or the 1st of a month or quarter. */
+  fromDay: date('from_day').notNull(),
+  body: text('body').notNull(),
+  /** 'claude' when drafted and not edited since, otherwise who last saved it. */
+  author: text('author').notNull().default('claude'),
+  updatedAt: ts('updated_at').notNull().defaultNow(),
+}, (t) => [
+  primaryKey({ columns: [t.period, t.fromDay] }),
+  check('report_summaries_body_not_blank', sql`length(trim(${t.body})) > 0`),
+]);
