@@ -15,6 +15,13 @@
       "when": 1795421632054,
       "tag": "0001_project_dirs",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795426101395,
+      "tag": "0002_week_plan_shares",
+      "breakpoints": true
     }
   ]
 }

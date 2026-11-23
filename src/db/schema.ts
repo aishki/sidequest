@@ -110,6 +110,11 @@ export const weekPlans = pgTable('week_plans', {
   weekStart: date('week_start').primaryKey(),
   saturdayHours: numeric('saturday_hours', { precision: 4, scale: 2, mode: 'number' }).notNull().default(0),
   sundayHours: numeric('sunday_hours', { precision: 4, scale: 2, mode: 'number' }).notNull().default(0),
+  /** Put all of a weekend day's hours on one project instead of splitting them by share. */
+  saturdayProjectId: integer('saturday_project_id').references(() => projects.id, { onDelete: 'set null' }),
+  sundayProjectId: integer('sunday_project_id').references(() => projects.id, { onDelete: 'set null' }),
+  /** This week's split, project id -> percent (adds up to 100). Null means the usual weekly_pct split. */
+  shares: jsonb('shares').$type<Record<string, number>>(),
   note: text('note'),
 }, (t) => [check('week_plans_monday', sql`extract(isodow from ${t.weekStart}) = 1`)]);
 
