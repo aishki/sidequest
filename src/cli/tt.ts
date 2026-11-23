@@ -16,7 +16,7 @@ import {
   applyTimezone, clearWeekShares, dayHours, defaultShares, effectiveShares, getSettings, getWeekPlan, setSettings,
   setShare, setWeekend, type SettingsPatch, type WeekendDay,
 } from '../core/planning.ts';
-import { linkDir, listProjects, matchProject, normDir, projectForDir, unlinkDir } from '../core/projects.ts';
+import { addProject, linkDir, listProjects, matchProject, normDir, projectForDir, unlinkDir } from '../core/projects.ts';
 import {
   addSubtasks, changeSubtask, createTicket, deleteTicket, getTicket, listSubtasks, listTickets, moveTicket,
   updateTicket, type Ticket, type TicketFields,
@@ -118,6 +118,7 @@ Time
 
 Projects
   tt projects
+  tt projects add <name> --prefix WEB [--alias site] [--share 30] [--color #hex] [--overhead]
   tt resolve <name>                 which project a name means (exit 2 = ask the user)
   tt link <project> [--dir PATH]    "this" in that folder means that project
   tt unlink [--dir PATH]
@@ -147,9 +148,11 @@ Status: inbox, todo, in progress, blocked, done. Priority: low, normal, high, ur
 Add --json to any command for machine-readable output.`;
 
 const commands: Record<string, (rest: string[]) => Promise<void>> = {
-  async help() { console.log(HELP); },
+  async help() { console.log(`${HELP}\n\nInstalled at ${ROOT}. Check the setup with: npm run setup`); },
 
-  async projects() {
+  async projects(rest) {
+    if (rest[0] === 'add') return addProjectCmd(rest.slice(1));
+    if (rest.length) throw new UserError('Usage: tt projects, or tt projects add <name> --prefix P');
     const [list, s] = await Promise.all([listProjects(), getSettings()]);
     const cwdProject = projectForDir(process.cwd(), list);
     const usual = defaultShares(list);
@@ -494,6 +497,25 @@ const commands: Record<string, (rest: string[]) => Promise<void>> = {
   },
 
 };
+
+async function addProjectCmd(rest: string[]) {
+  const { values, positionals } = parse(rest, {
+    prefix: { type: 'string' }, alias: { type: 'string', multiple: true }, color: { type: 'string' },
+    share: { type: 'string' }, overhead: { type: 'boolean' },
+  });
+  if (!positionals.length || !values.prefix) {
+    throw new UserError('Usage: tt projects add <name> --prefix WEB [--alias site --alias web] [--share 30] [--color #2ea3ae] [--overhead]');
+  }
+  const share = values.share === undefined ? undefined : Number(values.share.replace(/%$/, ''));
+  if (share !== undefined && !Number.isFinite(share)) throw new UserError(`"${values.share}" isn't a percentage.`);
+  if (values.overhead && share) throw new UserError('Overhead projects are never planned, so they take no share.');
+  const p = await addProject({
+    name: positionals.join(' '), prefix: values.prefix, color: values.color, weeklyPct: share, isOverhead: values.overhead,
+    aliases: values.alias?.flatMap((a) => a.split(',')),
+  }, SRC);
+  const plan = p.isOverhead ? 'overhead, never planned' : p.weeklyPct ? `${p.weeklyPct}% of the usual week` : 'no share of the week yet';
+  out(`Added ${p.prefix} ${p.name} (${plan}${p.aliases.length ? `, aka ${p.aliases.join(', ')}` : ''}). Tickets start at ${p.prefix}-001.`, p);
+}
 
 const ALIASES: Record<string, string> = {
   spent: 'log', edit: 'update', ls: 'list', rm: 'delete', new: 'add', '-h': 'help', '--help': 'help', project: 'projects',

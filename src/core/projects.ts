@@ -105,3 +105,51 @@ export async function unlinkDir(dir: string, source: Source) {
     return { project, dir: d };
   });
 }
+
+/**
+ * Chart colors in the order they were checked for color-blind separation on the dark theme.
+ * New projects take the first unused one; gray is for overhead.
+ */
+export const PROJECT_COLORS = ['#e0559f', '#5f9e64', '#8f6fd1', '#2ea3ae', '#b0893a', '#5b8fd6', '#d0744a', '#c25bc9'];
+export const OVERHEAD_COLOR = '#a9a1b8';
+
+export type NewProject = {
+  name: string; prefix: string; aliases?: string[]; color?: string; weeklyPct?: number; isOverhead?: boolean;
+};
+
+/** Adds a project. Every name it answers to must be free, so /t never has to guess between two. */
+export async function addProject(input: NewProject, source: Source) {
+  const name = input.name.trim().replace(/\s+/g, ' ');
+  const prefix = input.prefix.trim().toUpperCase();
+  const aliases = [...new Set((input.aliases ?? []).map((a) => norm(a)).filter(Boolean))];
+  const isOverhead = input.isOverhead ?? false;
+  const weeklyPct = isOverhead ? 0 : input.weeklyPct ?? 0;
+
+  if (!name) throw new UserError('A project needs a name.');
+  if (!/^[A-Z][A-Z0-9]{1,5}$/.test(prefix)) {
+    throw new UserError(`"${input.prefix}" can't be a prefix: use 2 to 6 letters or digits, starting with a letter (e.g. WEB).`);
+  }
+  if (!(weeklyPct >= 0 && weeklyPct <= 100)) throw new UserError('The weekly share must be between 0 and 100.');
+  if (input.color && !/^#[0-9a-f]{6}$/i.test(input.color)) throw new UserError(`"${input.color}" isn't a color like #2ea3ae.`);
+
+  return db.transaction(async (tx) => {
+    const all = await tx.select().from(projects);
+    const taken = new Map<string, Project>();
+    for (const p of all) for (const n of [p.prefix.toLowerCase(), norm(p.name), ...p.aliases]) taken.set(n, p);
+    if (all.some((p) => p.prefix === prefix)) throw new UserError(`${prefix} is already the prefix of ${all.find((p) => p.prefix === prefix)!.name}.`);
+    for (const n of [prefix.toLowerCase(), norm(name), ...aliases]) {
+      const other = taken.get(n);
+      if (other) throw new UserError(`"${n}" already means ${describe(other)}. Pick another name or alias.`);
+    }
+
+    const used = new Set(all.filter((p) => !p.archivedAt).map((p) => p.color));
+    const color = (input.color?.toLowerCase())
+      ?? (isOverhead ? OVERHEAD_COLOR : PROJECT_COLORS.find((c) => !used.has(c)) ?? PROJECT_COLORS[all.length % PROJECT_COLORS.length]);
+    const sortOrder = Math.max(0, ...all.map((p) => p.sortOrder)) + 1;
+
+    const [project] = await tx.insert(projects)
+      .values({ name, prefix, aliases, color, weeklyPct, isOverhead, sortOrder }).returning();
+    await logEvent(tx, { kind: 'project.created', source, projectId: project.id, data: { name, prefix, aliases, weeklyPct, isOverhead } });
+    return project;
+  });
+}
