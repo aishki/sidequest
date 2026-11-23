@@ -8,3 +8,4 @@ backups/
 *.dump
 *.log
 .DS_Store
+seed/projects.json

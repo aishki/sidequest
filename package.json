@@ -1,0 +1,40 @@
+{
+  "name": "sidequest",
+  "version": "1.0.0",
+  "description": "Every ticket is a quest. A /t ticket tracker for Claude Code with a dark local dashboard and Postgres.",
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node src/db/migrate.ts",
+    "db:seed": "node src/db/seed.ts",
+    "typecheck": "tsc --noEmit",
+    "tt": "node src/cli/tt.ts"
+  },
+  "keywords": [
+    "claude-code",
+    "ticket-tracker",
+    "postgres"
+  ],
+  "author": "aishki",
+  "license": "MIT",
+  "dependencies": {
+    "drizzle-orm": "^0.45.4",
+    "postgres": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "drizzle-kit": "^0.31.11",
+    "typescript": "^7.0.2"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "tt": "src/cli/tt.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aishki/sidequest.git"
+  }
+}

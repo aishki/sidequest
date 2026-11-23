@@ -1,0 +1,15 @@
+{
+  "$comment": "Copy to seed/projects.json (git-ignored) and edit. weeklyPct is normalized against the total, so shares don't have to add up to exactly 100.",
+  "settings": {
+    "weekHours": 40,
+    "workDays": [1, 2, 3, 4, 5],
+    "weekendPlanning": "opt-in",
+    "timezone": "auto"
+  },
+  "projects": [
+    { "name": "Website", "prefix": "WEB", "aliases": ["site"], "color": "#e0559f", "weeklyPct": 50 },
+    { "name": "Mobile app", "prefix": "APP", "aliases": ["app", "mobile"], "color": "#5f9e64", "weeklyPct": 30 },
+    { "name": "Docs", "prefix": "DOC", "aliases": ["docs"], "color": "#8f6fd1", "weeklyPct": 20 },
+    { "name": "Admin", "prefix": "ADM", "aliases": ["admin", "misc"], "color": "#a9a1b8", "weeklyPct": 0, "isOverhead": true }
+  ]
+}
