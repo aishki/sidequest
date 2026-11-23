@@ -58,7 +58,10 @@ tt today
 tt sub add <KEY> "<text>"… | tt sub done|undo|rm <KEY> <n>
 tt log <KEY|project> <duration> [--on DAY] [--at 14:00] [--note "…"]
 tt timer start <KEY|project> [--switch] | tt timer stop [--note "…"] | tt timer cancel | tt timer
-tt weekend <sat-hours> <sun-hours> [--week DAY] | tt weekend off
+tt share | tt share <project> <pct> [--week DAY] | tt share reset --week DAY
+tt settings [--hours 40] [--days mon-fri] [--meetings 3h|none]
+tt weekend sat|sun <hours|off> [--on project] [--week DAY]
+tt weekend <sat-hours> <sun-hours> [--on project] [--week DAY] | tt weekend off [--week DAY]
 tt projects | tt resolve <name> | tt link <project> | tt here
 ```
 
@@ -69,7 +72,16 @@ DAY is today, tomorrow, yesterday, mon…sun, or YYYY-MM-DD. Durations look like
 - "spent 2h on web-014" → `tt log web-014 2h`. "yesterday" → `--on yesterday`. "from 2 to 4" → `--at 14:00` with 2h.
 - Time can go to a project with no ticket: `tt log admin 30m --note "standup"`.
 - "starting on X" / "working on X now" → `tt timer start X`. If a timer is already running, add `--switch`. Switching is what the user means.
-- Weekend time can always be logged. **Weekend hours are planned only when the user explicitly asks for that week** (`tt weekend 4 0`). Never plan weekend work on your own.
+- Weekend time can always be logged. **Weekend hours are planned only when the user explicitly asks for that week.** Never plan weekend work on your own.
+
+## Planning
+
+- "plan saturday 3h on the app" → `tt weekend sat 3h --on app`. For "next weekend", add `--week` with a day in that week. Without `--on`, weekend hours split like a work day. "no weekend" → `tt weekend off`. A weekend opt-in counts for that one week only.
+- "put 40% on web" → `tt share web 40`; the other projects scale to fit. If the user means one week only ("this week", "next week"), add `--week DAY`. If it's unclear whether they mean every week or one week, ask. Changing the usual split also changes past weeks in reports.
+- "back to normal this week" → `tt share reset --week today`.
+- "how's my week split" → `tt share`.
+- "I work 35 hours", "I have 3h of meetings a week", "I work Mon–Thu" → `tt settings --hours 35`, `--meetings 3h`, `--days mon-thu`. These change every week, so confirm in one line first.
+- Overhead projects (e.g. Admin) never get planned hours.
 
 ## No arguments
 

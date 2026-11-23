@@ -2,20 +2,23 @@
 // tt: the sidequest command line. /t calls this; it never writes SQL itself.
 // Exit codes: 0 ok, 1 bad input or error, 2 needs the user to choose (e.g. an ambiguous project).
 import { parseArgs, type ParseArgsConfig } from 'node:util';
-import { eq } from 'drizzle-orm';
-import { db, sql, schema } from '../core/db.ts';
+import { sql } from '../core/db.ts';
 import {
-  addDays, fmtClock, fmtDay, fmtMin, label, parseClock, parseDay, parseDayOrNone, parseDuration, parsePriority,
-  parseStatus, parseType, startOfDay, today, UserError, STATUSES, type TicketStatus,
+  addDays, fmtClock, fmtDay, fmtMin, fmtWorkDays, label, mondayOf, parseClock, parseDay, parseDayOrNone, parseDuration,
+  parseHours, parsePriority, parseStatus, parseType, parseWorkDays, startOfDay, today, UserError, STATUSES,
+  type TicketStatus,
 } from '../core/parse.ts';
+import {
+  applyTimezone, clearWeekShares, dayHours, defaultShares, effectiveShares, getSettings, getWeekPlan, setSettings,
+  setShare, setWeekend, type SettingsPatch, type WeekendDay,
+} from '../core/planning.ts';
 import { linkDir, listProjects, matchProject, normDir, projectForDir, unlinkDir } from '../core/projects.ts';
 import {
   addSubtasks, changeSubtask, createTicket, deleteTicket, getTicket, listSubtasks, listTickets, moveTicket,
   updateTicket, type Ticket, type TicketFields,
 } from '../core/tickets.ts';
 import {
-  cancelTimer, getWeekPlan, logTime, minutesByProject, resolveTarget, runningTimer, setWeekend, startTimer, stopTimer,
-  ticketTime, timerLabel,
+  cancelTimer, logTime, minutesByProject, resolveTarget, runningTimer, startTimer, stopTimer, ticketTime, timerLabel,
 } from '../core/time.ts';
 
 const SRC = 'cli' as const;
@@ -110,7 +113,14 @@ Projects
   tt here                           project linked to the current folder
 
 Planning
-  tt weekend <sat-hours> <sun-hours> [--week DAY]   opt one week in to weekend hours (0 0 = off)
+  tt share                          how the week is split, in % and hours
+  tt share <project> <pct> [--week DAY]   change one share; the others scale to fit
+                                    (--week: that week only; without it: every week)
+  tt share reset --week DAY         that week goes back to the usual split
+  tt settings [--hours 40] [--days mon-fri] [--meetings 3h]
+  tt weekend sat|sun <hours|off> [--on project] [--week DAY]
+  tt weekend <sat-hours> <sun-hours> [--on project] [--week DAY]
+  tt weekend off [--week DAY]       weekend hours count for that one week only
 
 project: prefix (WEB), alias (web, site), full name, or "this" for the current folder.
 DAY: today, tomorrow, yesterday, mon..sun, or YYYY-MM-DD.
@@ -122,12 +132,12 @@ const commands: Record<string, (rest: string[]) => Promise<void>> = {
   async help() { console.log(HELP); },
 
   async projects() {
-    const list = await listProjects();
+    const [list, s] = await Promise.all([listProjects(), getSettings()]);
     const cwdProject = projectForDir(process.cwd(), list);
-    const totalPct = list.reduce((s, p) => s + p.weeklyPct, 0) || 1;
-    const weekHours = Number((await getSetting('weekHours')) ?? 40);
+    const usual = defaultShares(list);
+    const focusHours = Math.max(0, s.weekHours - s.meetingHours);
     const lines = list.map((p) => {
-      const hours = p.isOverhead ? 'not planned' : `${((p.weeklyPct / totalPct) * weekHours).toFixed(1)}h/wk`;
+      const hours = p.isOverhead ? 'not planned' : `${(((usual.get(p.id) ?? 0) / 100) * focusHours).toFixed(1)}h/wk`;
       const extra = [p.aliases.length ? `aka ${p.aliases.join(', ')}` : '', p.dirs.length ? `folders: ${p.dirs.join(', ')}` : '']
         .filter(Boolean).join(' · ');
       return `${p.prefix.padEnd(5)} ${p.name.padEnd(26)} ${hours.padEnd(12)} next ${p.prefix}-${String(p.nextNumber).padStart(3, '0')}${p.id === cwdProject?.id ? '  ← this folder' : ''}\n      ${extra}`;
@@ -368,19 +378,66 @@ const commands: Record<string, (rest: string[]) => Promise<void>> = {
     out(`${verb} "${r.subtask.title}" on ${r.ticket.key}. ${left} of ${r.subtasks.length} left.`, r);
   },
 
-  async weekend(rest) {
+  async share(rest) {
     const { values, positionals } = parse(rest, { week: { type: 'string' } });
-    let sat: number, sun: number;
-    if (positionals.length === 1 && positionals[0].toLowerCase() === 'off') [sat, sun] = [0, 0];
-    else if (positionals.length === 2) [sat, sun] = positionals.map((p) => Number(p.replace(/h$/i, '')));
-    else throw new UserError('Usage: tt weekend <saturday-hours> <sunday-hours> [--week DAY], or tt weekend off');
-    if ([sat, sun].some((h) => Number.isNaN(h))) throw new UserError('Hours must be numbers, e.g. tt weekend 4 0.');
-    const r = await setWeekend(values.week ? parseDay(values.week, 'future') : today(), sat, sun, SRC);
-    const day = (h: number, iso: string) => h ? `${h}h on ${fmtDay(iso)}` : `${fmtDay(iso)} off`;
-    out(sat || sun
-      ? `Week of ${fmtDay(r.weekStart)}: planning ${day(sat, r.saturday)}, ${day(sun, r.sunday)}.`
+    const week = values.week ? parseDay(values.week, 'future') : undefined;
+    if (positionals[0]?.toLowerCase() === 'reset') {
+      if (!week) throw new UserError('Which week? tt share reset --week DAY. To change the usual split, set a share without --week.');
+      const r = await clearWeekShares(week, SRC);
+      return out(`Week of ${fmtDay(r.weekStart)} is back on the usual split.`, r);
+    }
+    let note = '';
+    if (positionals.length >= 2) {
+      const pctText = positionals.at(-1)!;
+      if (!/^\d+(\.\d+)?%?$/.test(pctText)) throw new UserError(`"${pctText}" isn't a percent. Use a number like 30 or 30%.`);
+      const pct = Number(pctText.replace(/%$/, ''));
+      const r = await setShare(positionals.slice(0, -1).join(' '), pct, { week }, SRC);
+      const scope = week ? `the week of ${fmtDay(mondayOf(week))} only` : 'every week';
+      note = `${r.project.name} is now ${pct}% (${scope}). The other projects scaled to fit.`;
+    } else if (positionals.length === 1) {
+      throw new UserError('Usage: tt share <project> <pct> [--week DAY], e.g. tt share web 40');
+    }
+    await showShares(week ?? today(), note);
+  },
+
+  async settings(rest) {
+    const { values } = parse(rest, { hours: { type: 'string' }, days: { type: 'string' }, meetings: { type: 'string' } });
+    const patch: SettingsPatch = {};
+    if (values.hours) patch.weekHours = parseHours(values.hours);
+    if (values.days) patch.workDays = parseWorkDays(values.days);
+    if (values.meetings) patch.meetingHours = ['none', '0', 'off'].includes(values.meetings.toLowerCase()) ? 0 : parseHours(values.meetings);
+    const changed = Object.keys(patch).length > 0;
+    const s = changed ? await setSettings(patch, SRC) : await getSettings();
+    const focus = Math.max(0, s.weekHours - s.meetingHours);
+    out([
+      changed ? 'Saved.\n' : '',
+      `Week:      ${s.weekHours}h`,
+      `Work days: ${fmtWorkDays(s.workDays)}`,
+      `Meetings:  ${s.meetingHours ? `${s.meetingHours}h a week` : 'none'}`,
+      `Planned:   ${focus}h of project work, ${+(focus / s.workDays.length).toFixed(2)}h a day`,
+    ].filter(Boolean).join('\n'), s);
+  },
+
+  async weekend(rest) {
+    const { values, positionals } = parse(rest, { week: { type: 'string' }, on: { type: 'string' } });
+    const day = values.week ? parseDay(values.week, 'future') : today();
+    const projectId = values.on ? matchProject(values.on, await listProjects()).id : undefined;
+    const hours = (t: string) => (['off', 'none', '0'].includes(t.toLowerCase()) ? 0 : parseHours(t));
+    const side = (h: number): WeekendDay => ({ hours: h, projectId: h ? projectId : null });
+    const which = positionals[0]?.toLowerCase() ?? '';
+    let change: { saturday?: WeekendDay; sunday?: WeekendDay };
+    if (positionals.length === 1 && which === 'off') change = { saturday: side(0), sunday: side(0) };
+    else if (positionals.length === 2 && /^sat(urday)?$/.test(which)) change = { saturday: side(hours(positionals[1])) };
+    else if (positionals.length === 2 && /^sun(day)?$/.test(which)) change = { sunday: side(hours(positionals[1])) };
+    else if (positionals.length === 2) change = { saturday: side(hours(positionals[0])), sunday: side(hours(positionals[1])) };
+    else throw new UserError('Usage: tt weekend sat 3h [--on project] [--week DAY], tt weekend <sat-hours> <sun-hours>, or tt weekend off');
+    const r = await setWeekend(day, change, SRC);
+    const one = (h: number, iso: string, p: string | null) => (h ? `${h}h on ${fmtDay(iso)}${p ? ` (all on ${p})` : ''}` : `${fmtDay(iso)} off`);
+    out(r.saturdayHours || r.sundayHours
+      ? `Week of ${fmtDay(r.weekStart)}: planning ${one(r.saturdayHours, r.saturday, r.saturdayProject)}, ${one(r.sundayHours, r.sunday, r.sundayProject)}.`
       : `Week of ${fmtDay(r.weekStart)}: no weekend hours planned.`, r);
   },
+
 };
 
 const ALIASES: Record<string, string> = {
@@ -391,17 +448,35 @@ function isoLocal(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-async function getSetting(key: string): Promise<unknown> {
-  const [row] = await db.select().from(schema.settings).where(eq(schema.settings.key, key));
-  return row?.value;
+/** The split for the week holding `day`: percent, hours a week and hours a work day per project. */
+async function showShares(day: string, note = '') {
+  const [list, s, plan] = await Promise.all([listProjects(), getSettings(), getWeekPlan(day)]);
+  const shares = effectiveShares(list, plan);
+  const usual = defaultShares(list);
+  const firstWorkDay = addDays(plan.weekStart, (Math.min(...s.workDays.map((d) => (d + 6) % 7))));
+  const perDay = dayHours(firstWorkDay, s, plan);
+  const focus = perDay * s.workDays.length;
+  const rows = [...shares].map(([id, pct]) => {
+    const p = list.find((x) => x.id === id)!;
+    const was = usual.get(id) ?? 0;
+    const changed = plan.shares && Math.abs(pct - was) >= 0.05 ? `  (usually ${was.toFixed(1)}%)` : '';
+    return `${p.prefix.padEnd(5)} ${p.name.padEnd(26)} ${`${pct.toFixed(1)}%`.padStart(6)}  ${`${((pct / 100) * focus).toFixed(1)}h/wk`.padStart(8)}  ${`${((pct / 100) * perDay).toFixed(1)}h/day`.padStart(9)}${changed}`;
+  });
+  const head = `Week of ${fmtDay(plan.weekStart)}: ${plan.shares ? 'its own split (this week only)' : 'the usual split'}. ` +
+    `${+focus.toFixed(2)}h of project work, ${fmtWorkDays(s.workDays)}${s.meetingHours ? `, after ${s.meetingHours}h of meetings` : ''}.`;
+  const overhead = list.filter((p) => p.isOverhead).map((p) => p.name);
+  out([note ? `${note}\n` : '', head, '', ...rows, overhead.length ? `\n${overhead.join(', ')}: overhead, not planned.` : '']
+    .filter((l, i) => l || i === 2).join('\n'), {
+    weekStart: plan.weekStart, override: plan.shares != null, focusHours: focus, hoursPerDay: perDay,
+    shares: [...shares].map(([projectId, pct]) => ({ projectId, pct, usualPct: usual.get(projectId) ?? 0 })),
+  });
 }
 
 async function main() {
   const [name = 'help', ...rest] = args;
   const cmd = commands[ALIASES[name] ?? name];
   if (!cmd) throw new UserError(`Unknown command "${name}". Run tt help.`);
-  const tz = await getSetting('timezone').catch(() => undefined);
-  if (typeof tz === 'string' && tz !== 'auto') process.env.TZ = tz;
+  await applyTimezone().catch(() => undefined);
   await cmd(rest);
 }
 
