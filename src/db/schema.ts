@@ -20,6 +20,8 @@ export const projects = pgTable('projects', {
   /** Lowercase names /t accepts for this project. */
   aliases: text('aliases').array().notNull().default(sql`'{}'::text[]`),
   color: text('color').notNull(),
+  /** Folders that belong to this project, so "/t ... this" knows which one you mean. Normalized: forward slashes, lowercase on Windows. */
+  dirs: text('dirs').array().notNull().default(sql`'{}'::text[]`),
   /** Share of the planned work week, in percent. Normalized against the total when planning. */
   weeklyPct: numeric('weekly_pct', { precision: 6, scale: 3, mode: 'number' }).notNull().default(0),
   /** Admin / non-project bucket: never planned, still loggable. */
