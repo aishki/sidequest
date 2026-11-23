@@ -2,7 +2,7 @@
 
 Every ticket is a quest. **sidequest** is a personal ticket and to-do tracker you drive by typing `/t` in any Claude Code terminal, with a dark-mode dashboard on top and a local PostgreSQL database underneath.
 
-> **Status:** early build. Nothing is installable yet; this README describes where it's headed.
+> **Status:** early build. `/t` and the `tt` CLI work. The dashboard, planning and reports come next.
 
 ## What it does
 
@@ -12,15 +12,39 @@ Every ticket is a quest. **sidequest** is a personal ticket and to-do tracker yo
 - **Reports.** Weekly and monthly metrics (tickets shipped, hours by project, planned vs logged) plus a written summary you can paste into an update for your manager.
 - **Local first.** Your tickets live in Postgres on your own machine. Nothing is sent anywhere.
 
-## Install (planned)
+## Install
 
-```text
-/plugin marketplace add aishki/sidequest
-/plugin install sidequest
-/t setup
+You need Node 22.18 or newer and PostgreSQL running locally.
+
+```bash
+git clone https://github.com/aishki/sidequest && cd sidequest
+npm install
+bash scripts/create-db.sh            # creates the sidequest role + database, writes .env
+cp seed/projects.example.json seed/projects.json   # then edit: your projects, aliases, colors, weekly shares
+npm run db:migrate && npm run db:seed
+npm link                             # puts `tt` on your PATH
 ```
 
-`/t setup` creates the database (local Postgres, or Docker if you don't have it), asks for your projects and weekly hours, and starts the dashboard.
+Then, in Claude Code:
+
+```text
+/plugin install sidequest --marketplace aishki/sidequest
+```
+
+`seed/projects.json` is git-ignored, so your project list stays on your machine.
+
+## Using it
+
+```text
+/t site login needs a loading state, high, plan today
+/t spent 1h30 on web-001
+/t start working on app-004
+/t done web-001
+/t this: dark mode toggle flickers      ← "this" = the project linked to the current folder
+/t                                      ← what's on today
+```
+
+When a project name is ambiguous, `/t` asks instead of guessing. You can also call the CLI directly: run `tt help` for every command.
 
 ## How it fits together
 
