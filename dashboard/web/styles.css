@@ -317,3 +317,20 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.75); }
   .drawer { animation: slide 160ms ease-out; }
   @keyframes slide { from { transform: translateX(24px); opacity: 0; } }
 }
+
+/* Side panels: thin, theme-colored scrollbar that shows while you're over the panel */
+.side, .drawer-body { scrollbar-gutter: stable; }
+.side::-webkit-scrollbar, .drawer-body::-webkit-scrollbar { width: 10px; }
+.side::-webkit-scrollbar-track, .drawer-body::-webkit-scrollbar-track { background: transparent; }
+.side::-webkit-scrollbar-button, .drawer-body::-webkit-scrollbar-button { display: none; height: 0; }
+.side::-webkit-scrollbar-thumb, .drawer-body::-webkit-scrollbar-thumb {
+  background: transparent; border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; min-height: 40px;
+}
+.side:hover::-webkit-scrollbar-thumb, .side:focus-within::-webkit-scrollbar-thumb,
+.drawer-body:hover::-webkit-scrollbar-thumb, .drawer-body:focus-within::-webkit-scrollbar-thumb { background-color: var(--line-strong); }
+.side::-webkit-scrollbar-thumb:hover, .drawer-body::-webkit-scrollbar-thumb:hover { background-color: var(--ink-muted); }
+.side::-webkit-scrollbar-thumb:active, .drawer-body::-webkit-scrollbar-thumb:active { background-color: var(--accent); }
+@supports not selector(::-webkit-scrollbar) {
+  .side, .drawer-body { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+  .side:hover, .side:focus-within, .drawer-body:hover, .drawer-body:focus-within { scrollbar-color: var(--line-strong) transparent; }
+}
