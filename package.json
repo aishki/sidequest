@@ -6,8 +6,11 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node src/db/migrate.ts",
     "db:seed": "node src/db/seed.ts",
-    "typecheck": "tsc --noEmit",
-    "tt": "node src/cli/tt.ts"
+    "typecheck": "tsc --noEmit && tsc -p dashboard/tsconfig.json",
+    "tt": "node src/cli/tt.ts",
+    "dashboard": "node dashboard/server/index.ts",
+    "dashboard:build": "npm run build -w dashboard",
+    "dashboard:start": "node dashboard/server/index.ts --prod"
   },
   "keywords": [
     "claude-code",
@@ -36,5 +39,8 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/aishki/sidequest.git"
-  }
+  },
+  "workspaces": [
+    "dashboard"
+  ]
 }
