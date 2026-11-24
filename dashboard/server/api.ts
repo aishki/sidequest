@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { and, count, desc, eq, gte, lt } from 'drizzle-orm';
 import { db, schema, sql, type Source } from '../../src/core/db.ts';
-import { listProjects, type Project } from '../../src/core/projects.ts';
+import { addProject, listProjects, type Project } from '../../src/core/projects.ts';
 import {
   addSubtasks, changeSubtask, createTicket, deleteTicket, getTicket, listSubtasks, listTickets, moveTicket,
   updateTicket, type Ticket, type TicketFields,
@@ -15,7 +15,7 @@ import {
 } from '../../src/core/parse.ts';
 import {
   clearWeekShares, dayHours, dayTargets, defaultShares, effectiveShares, entriesBetween, getSettings, getWeekPlan,
-  plannable, rangeTargets, setSettings, setShares, setWeekend, sumBy,
+  plannable, rangeTargets, setSettings, setShare, setShares, setWeekend, sumBy,
 } from '../../src/core/planning.ts';
 import { buildReport, draftSummary, parsePeriod, saveSummary } from '../../src/core/reports.ts';
 
@@ -235,6 +235,17 @@ route('GET', '/api/projects', async () => {
       doneThisWeek: mine.filter((t) => t.doneAt && t.doneAt >= startOfDay(ws)).length,
     };
   });
+});
+
+// Same checks as `tt projects add`. A share is applied like `tt share`, so the other projects scale to fit.
+route('POST', '/api/projects', async ({ body }) => {
+  const share = body.share === undefined || body.share === null || body.share === '' ? 0 : Number(body.share);
+  const isOverhead = body.isOverhead === true;
+  if (!isOverhead && !(share >= 0 && share <= 100)) throw new UserError('The weekly share must be between 0 and 100.');
+  const aliases = Array.isArray(body.aliases) ? body.aliases.map((a) => str(a, 'Alias')) : [];
+  const project = await addProject({ name: str(body.name, 'Name'), prefix: str(body.prefix, 'Prefix'), aliases, isOverhead }, SRC);
+  if (!isOverhead && share > 0) await setShare(project.prefix, share, {}, SRC);
+  return project;
 });
 
 route('GET', '/api/today', async () => {
