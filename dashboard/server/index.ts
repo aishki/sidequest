@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { sql } from '../../src/core/db.ts';
 import { handleApi } from './api.ts';
 import { applyTimezone } from '../../src/core/planning.ts';
+import { promoteDueTickets } from '../../src/core/tickets.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const dist = join(root, 'dist');
@@ -19,6 +20,12 @@ await applyTimezone().catch((e: Error & { code?: string }) => {
   console.error(e.code === 'ECONNREFUSED' ? 'Can\'t reach Postgres. Is it running? Check with: npm run setup' : e.message);
   process.exit(1);
 });
+
+// Tickets due by tomorrow move from Inbox to To Do on start, and again each minute so it also happens at midnight.
+// Open pages refresh on their own, because each move is logged as an event.
+const promote = () => promoteDueTickets().catch(() => undefined);
+await promote();
+setInterval(promote, 60_000).unref();
 
 const server = http.createServer(async (req, res) => {
   // Refuse other Host names (DNS rebinding) and cross-site writes.

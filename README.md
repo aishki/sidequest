@@ -177,7 +177,7 @@ Six screens, all editable, all dark mode:
 | Screen | What it's for |
 |---|---|
 | **Today** | The one ticket to focus on, its checklist and timer, then today's hours per project. |
-| **Board** | Inbox, To do, In progress, Blocked, Done. Drag a card to change its status. |
+| **Board** | Inbox, To do, In progress, Blocked, Done. Drag a card to change its status. An Inbox ticket moves to To do the day before it's due (or right away if it's due sooner or overdue). |
 | **Projects** | Each project's share of the week, hours logged against it, and its ticket counts. |
 | **Week plan** | Drag tickets onto days and see logged vs target hours. **Edit plan** changes the split (this week or every week), your hours, meetings and work days, and weekend hours. |
 | **Reports** | Week, month or quarter: summary tiles, an editable written summary (**Draft with Claude**), hours per day by project, planned vs logged, and what shipped. **Copy as update** or **Save as PDF**. |

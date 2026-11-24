@@ -19,7 +19,7 @@ import {
 import { addProject, linkDir, listProjects, matchProject, normDir, projectForDir, unlinkDir } from '../core/projects.ts';
 import {
   addSubtasks, changeSubtask, createTicket, deleteTicket, getTicket, listSubtasks, listTickets, moveTicket,
-  updateTicket, type Ticket, type TicketFields,
+  promoteDueTickets, updateTicket, type Ticket, type TicketFields,
 } from '../core/tickets.ts';
 import {
   cancelTimer, logTime, minutesByProject, resolveTarget, runningTimer, startTimer, stopTimer, ticketTime, timerLabel,
@@ -554,6 +554,8 @@ async function main() {
   const cmd = commands[ALIASES[name] ?? name];
   if (!cmd) throw new UserError(`Unknown command "${name}". Run tt help.`);
   await applyTimezone().catch(() => undefined);
+  // Tickets due by tomorrow leave the Inbox before any command reads them. help needs no database.
+  if (cmd !== commands.help) await promoteDueTickets().catch(() => undefined);
   await cmd(rest);
 }
 

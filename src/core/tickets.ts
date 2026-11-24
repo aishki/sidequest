@@ -2,7 +2,7 @@ import { and, asc, eq, getTableColumns, inArray, isNull, gte, lt, lte, sql as ds
 import { db, logEvent, schema, type Exec, type Source } from './db.ts';
 import { listProjects, matchProject } from './projects.ts';
 import {
-  cleanTitle, formatKey, parseKey, UserError, STATUSES,
+  addDays, cleanTitle, formatKey, parseKey, today, UserError, STATUSES,
   type TicketPriority, type TicketStatus, type TicketType,
 } from './parse.ts';
 
@@ -99,6 +99,28 @@ export async function updateTicket(keyInput: string, patch: TicketFields, source
     await tx.update(tickets).set(set).where(eq(tickets.id, before.id));
     await logEvent(tx, { kind: 'ticket.updated', source, ticketId: before.id, projectId: before.projectId, data: { key: before.key, changes } });
     return { ticket: await getTicket(before.key, tx), changes };
+  });
+}
+
+/**
+ * Moves Inbox tickets that are due tomorrow, today or overdue into To Do, so they show up a day early. Safe to run often and from
+ * several places at once: the status check in the update means each ticket moves (and is logged) once.
+ * Only Inbox is touched. A ticket you already started, blocked or finished keeps its status.
+ */
+export async function promoteDueTickets(day = today(), x: Exec = db) {
+  return x.transaction(async (tx) => {
+    const moved = await tx.update(tickets)
+      .set({ status: 'todo', updatedAt: new Date() })
+      .where(and(eq(tickets.status, 'inbox'), lte(tickets.dueOn, addDays(day, 1))))
+      .returning({ id: tickets.id, projectId: tickets.projectId, number: tickets.number, dueOn: tickets.dueOn });
+    if (!moved.length) return [];
+    const prefixes = new Map((await listProjects(tx)).map((p) => [p.id, p.prefix]));
+    for (const t of moved) {
+      await logEvent(tx, { kind: 'ticket.updated', source: 'system', ticketId: t.id, projectId: t.projectId,
+        data: { key: formatKey(prefixes.get(t.projectId) ?? '?', t.number), reason: 'due', dueOn: t.dueOn,
+          changes: { status: { from: 'inbox', to: 'todo' } } } });
+    }
+    return moved;
   });
 }
 

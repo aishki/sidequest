@@ -251,7 +251,8 @@ function describe(e: EventRow): string {
     case 'ticket.created': return 'Created';
     case 'ticket.updated': {
       const ch = (d.changes ?? {}) as Record<string, { from: unknown; to: unknown }>;
-      return Object.entries(ch).map(([k, v]) => changeText(k, v.from, v.to)).join('; ') || 'Updated';
+      const text = Object.entries(ch).map(([k, v]) => changeText(k, v.from, v.to)).join('; ') || 'Updated';
+      return d.reason === 'due' ? `${text} (automatic: due soon)` : text;
     }
     case 'ticket.moved': return `Moved from ${d.from} to ${d.to}`;
     case 'subtask.added': return `Added ${(d.titles as string[])?.length === 1 ? 'subtask' : 'subtasks'}: ${(d.titles as string[])?.join(', ')}`;
