@@ -1,5 +1,6 @@
-import { useState, type DragEvent } from 'react';
+import { useRef } from 'react';
 import { api, useAction, useApi } from '../lib/api.ts';
+import { DropZone, useDraggableTicket, useDraggedTicket, useDragAutoScroll } from '../lib/dnd.tsx';
 import { addDays, fmtDay, hrs, parseIso, weekdayOf, weekNo } from '../lib/format.ts';
 import { openTicket, setParams } from '../lib/router.ts';
 import type { Ticket, WeekData } from '../lib/types.ts';
@@ -11,37 +12,22 @@ export function Week({ params }: { params: URLSearchParams }) {
   const day = params.get('day');
   const { data, error } = useApi<WeekData>(`/api/week${day ? `?day=${day}` : ''}`);
   const { run } = useAction();
-  const [dragKey, setDragKey] = useState<string | null>(null);
-  const [over, setOver] = useState<string | null>(null);
+  const dragKey = useDraggedTicket();
+  const gridRef = useRef<HTMLDivElement>(null);
+  useDragAutoScroll(gridRef);
   if (!data) return <div className="page wide"><Loading error={error} /></div>;
 
   const go = (n: number) => setParams({ day: addDays(data.weekStart, n * 7) });
   const isThisWeek = data.days.includes(data.today);
   const all = [...data.planned, ...data.unplanned];
 
-  function drop(e: DragEvent, plannedOn: string | null) {
-    e.preventDefault();
-    setOver(null);
-    const key = e.dataTransfer.getData('text/plain');
+  function drop(key: string, plannedOn: string | null) {
     const t = all.find((x) => x.key === key);
     if (t && t.plannedOn !== plannedOn) {
       run(() => api.patch(`/api/tickets/${key}`, { plannedOn }), plannedOn ? `${key} planned for ${fmtDay(plannedOn)}.` : `${key} unplanned.`);
     }
   }
-  const zone = (id: string, plannedOn: string | null) => ({
-    className: `well${over === id ? ' over' : ''}`,
-    onDragOver: (e: DragEvent) => { if (dragKey) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOver(id); } },
-    onDragLeave: (e: DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null); },
-    onDrop: (e: DragEvent) => drop(e, plannedOn),
-  });
-  const card = (t: Ticket) => (
-    <button key={t.id} type="button" className={`mini${t.status === 'done' ? ' done' : ''}`} draggable
-      onDragStart={(e) => { e.dataTransfer.setData('text/plain', t.key); e.dataTransfer.effectAllowed = 'move'; setDragKey(t.key); }}
-      onDragEnd={() => { setDragKey(null); setOver(null); }} onClick={() => openTicket(t.key)}>
-      <span className="key"><Dot color={t.color} label={t.projectName} />{t.key}{t.status === 'done' && <span className="ok">{I.check}</span>}</span>
-      <span>{t.title}</span>
-    </button>
-  );
+  const card = (t: Ticket) => <MiniCard key={t.id} t={t} />;
 
   const weekTarget = data.cells.flat().reduce((n, c) => n + c.targetMin, 0);
   const weekLogged = data.cells.flat().reduce((n, c) => n + c.loggedMin, 0);
@@ -63,7 +49,7 @@ export function Week({ params }: { params: URLSearchParams }) {
 
       <Plan data={data} tab={params.get('plan')} />
 
-      <div className="week-grid">
+      <div className="week-grid" ref={gridRef}>
         {data.days.map((d, i) => {
           const wd = weekdayOf(d);
           const target = data.cells[i].reduce((n, c) => n + c.targetMin, 0);
@@ -74,7 +60,8 @@ export function Week({ params }: { params: URLSearchParams }) {
           const capMin = data.hours[i] * 60;
           const overCap = estMin > capMin + 0.5;
           return (
-            <section key={d} className="day" aria-label={fmtDay(d)}>
+            // The whole day column takes the drop, so a day with few tickets is easy to hit.
+            <DropZone key={d} as="section" className="day" label={fmtDay(d)} onDropKey={(key) => drop(key, d)}>
               <div className={`day-head${d === data.today ? ' is-today' : ''}${off ? ' off' : ''}`}>
                 <span className="row-flex" style={{ justifyContent: 'space-between' }}>
                   <b>{parseIso(d).toLocaleDateString('en-GB', { weekday: 'short' })} <span className="muted" style={{ fontWeight: 400 }}>{parseIso(d).getDate()}</span></b>
@@ -88,11 +75,11 @@ export function Week({ params }: { params: URLSearchParams }) {
                   </span>
                 )}
               </div>
-              <div {...zone(d, d)}>
+              <div className="well">
                 {tickets.map(card)}
                 {tickets.length === 0 && <div className="empty-col">{dragKey ? 'Drop to plan' : '—'}</div>}
               </div>
-            </section>
+            </DropZone>
           );
         })}
       </div>
@@ -100,14 +87,25 @@ export function Week({ params }: { params: URLSearchParams }) {
       <section className="section" aria-labelledby="unplanned-h">
         <div className="section-head"><h2 className="heading" id="unplanned-h">Not planned yet</h2>
           <span className="small muted">{data.unplanned.length} open · drag onto a day</span></div>
-        <div {...zone('none', null)} style={{ flexDirection: 'row', flexWrap: 'wrap', minHeight: 72 }}>
+        <DropZone className="well" style={{ flexDirection: 'row', flexWrap: 'wrap', minHeight: 72 }} onDropKey={(key) => drop(key, null)}>
           {data.unplanned.map((t) => <div key={t.id} style={{ width: 220 }}>{card(t)}</div>)}
           {data.unplanned.length === 0 && <div className="empty-col" style={{ width: '100%' }}>{dragKey ? 'Drop here to unplan' : 'Every open ticket has a day.'}</div>}
-        </div>
+        </DropZone>
       </section>
 
       <HoursGrid data={data} />
     </div>
+  );
+}
+
+function MiniCard({ t }: { t: Ticket }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const dragging = useDraggableTicket(ref, t.key);
+  return (
+    <button ref={ref} type="button" className={`mini${t.status === 'done' ? ' done' : ''}${dragging ? ' dragging' : ''}`} onClick={() => openTicket(t.key)}>
+      <span className="key"><Dot color={t.color} label={t.projectName} />{t.key}{t.status === 'done' && <span className="ok">{I.check}</span>}</span>
+      <span>{t.title}</span>
+    </button>
   );
 }
 

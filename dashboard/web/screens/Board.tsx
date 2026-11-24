@@ -1,5 +1,6 @@
-import { useState, type DragEvent } from 'react';
+import { useRef } from 'react';
 import { api, useAction, useApi } from '../lib/api.ts';
+import { DropZone, useDraggableTicket, useDraggedTicket, useDragAutoScroll } from '../lib/dnd.tsx';
 import { STATUS_LABEL, TYPE_LABEL } from '../lib/format.ts';
 import { href, openTicket, setParams } from '../lib/router.ts';
 import { STATUSES, TYPES, type Status, type Summary, type Ticket } from '../lib/types.ts';
@@ -17,15 +18,13 @@ export function Board({ summary, params }: { summary?: Summary; params: URLSearc
   if (type) q.set('type', type);
   const { data, error } = useApi<Ticket[]>(`/api/tickets?${q}`);
   const { run } = useAction();
-  const [dragKey, setDragKey] = useState<string | null>(null);
-  const [over, setOver] = useState<Status | null>(null);
+  const dragKey = useDraggedTicket();
+  const boardRef = useRef<HTMLDivElement>(null);
+  useDragAutoScroll(boardRef);
   const today = summary?.today ?? '';
   const projectName = summary?.projects.find((p) => String(p.id) === project)?.name;
 
-  function drop(e: DragEvent, status: Status) {
-    e.preventDefault();
-    setOver(null);
-    const key = e.dataTransfer.getData('text/plain');
+  function drop(key: string, status: Status) {
     const t = data?.find((x) => x.key === key);
     if (t && t.status !== status) run(() => api.patch(`/api/tickets/${key}`, { status }), `${key} → ${STATUS_LABEL[status]}`);
   }
@@ -50,24 +49,18 @@ export function Board({ summary, params }: { summary?: Summary; params: URLSearc
         </select>
       </div>
       {!data ? <Loading error={error} /> : (
-        <div className="board">
+        <div className="board" ref={boardRef}>
           {STATUSES.map((s) => {
             const list = data.filter((t) => t.status === s);
             return (
-              <section key={s} className="col" aria-label={STATUS_LABEL[s]}>
+              // The whole column takes the drop, not just its cards, so a short column is easy to hit.
+              <DropZone key={s} as="section" className="col" label={STATUS_LABEL[s]} onDropKey={(key) => drop(key, s)}>
                 <div className="col-head"><Dot color={DOT[s]} /><h2 className="heading">{STATUS_LABEL[s]}</h2><span className="count">{list.length}</span></div>
-                <div className={`well${over === s ? ' over' : ''}`}
-                  onDragOver={(e) => { if (dragKey) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setOver(s); } }}
-                  onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(null); }}
-                  onDrop={(e) => drop(e, s)}>
-                  {list.map((t) => (
-                    <BoardCard key={t.id} t={t} today={today} dragging={dragKey === t.key}
-                      onDragStart={(e) => { e.dataTransfer.setData('text/plain', t.key); e.dataTransfer.effectAllowed = 'move'; setDragKey(t.key); }}
-                      onDragEnd={() => { setDragKey(null); setOver(null); }} />
-                  ))}
+                <div className="well">
+                  {list.map((t) => <BoardCard key={t.id} t={t} today={today} />)}
                   {list.length === 0 && <div className="empty-col">{dragKey ? 'Drop here' : 'Nothing here'}</div>}
                 </div>
-              </section>
+              </DropZone>
             );
           })}
         </div>
@@ -77,12 +70,12 @@ export function Board({ summary, params }: { summary?: Summary; params: URLSearc
   );
 }
 
-function BoardCard({ t, today, dragging, onDragStart, onDragEnd }: {
-  t: Ticket; today: string; dragging: boolean; onDragStart: (e: DragEvent) => void; onDragEnd: () => void;
-}) {
+function BoardCard({ t, today }: { t: Ticket; today: string }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  const dragging = useDraggableTicket(ref, t.key);
   const when = whenOf(t, today);
   return (
-    <button type="button" className={`bcard${dragging ? ' dragging' : ''}`} draggable onDragStart={onDragStart} onDragEnd={onDragEnd} onClick={() => openTicket(t.key)}>
+    <button ref={ref} type="button" className={`bcard${dragging ? ' dragging' : ''}`} onClick={() => openTicket(t.key)}>
       <span className="top"><Dot color={t.color} label={t.projectName} />{t.key}</span>
       <span className="t">{t.title}</span>
       <span className="bottom">
